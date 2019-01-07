@@ -15,7 +15,7 @@
 
 usage () {
   echo "usage: mltrain.sh [local | train | tune] [gs://]<input_file>.csv
-                  [--data-type ratings|web_views]
+                  [--data-type ratings|web_views|token_balances]
                   [--delimiter <delim>]
                   [--use-optimized]
                   [--headers]

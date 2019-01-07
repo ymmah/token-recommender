@@ -80,6 +80,8 @@ def create_test_and_train_sets(args, input_file, data_type='ratings'):
                                    input_file)
   elif data_type == 'web_views':
     return _page_views_train_and_test(input_file)
+  elif data_type == 'token_balances':
+    return _token_balances_train_and_test(input_file)
   else:
     raise ValueError('data_type arg value %s not supported.' % data_type)
 
@@ -214,6 +216,69 @@ def _page_views_train_and_test(input_file):
 
   return user_ux, pds_items.as_matrix(), tr_sparse, test_sparse
 
+def _token_balances_train_and_test(input_file):
+  """Load token_balances dataset, and create train and set sparse matrices.
+
+  Assumes 'token_address', 'user_address', and 'rating' columns.
+
+  Args:
+    input_file: path to csv data file
+
+  Returns:
+    array of user addresses for each row of the ratings matrix
+    array of token addresses for each column of the rating matrix
+    sparse coo_matrix for training
+    sparse coo_matrix for test
+  """
+  headers = ['token_address', 'user_address', 'rating']
+  balances_df = pd.read_csv(input_file,
+                           sep=',',
+                           names=headers,
+                           header=0,
+                           dtype={
+                               'token_address': np.str,
+                               'user_address': np.str,
+                               'rating': np.float32,
+                           })
+
+  df_tokens = pd.DataFrame({'token_address': balances_df.token_address.unique()})
+  df_sorted_tokens = df_tokens.sort_values('token_address').reset_index()
+  pds_tokens = df_sorted_tokens.token_address
+
+  # preprocess data. df.groupby.agg sorts user_address and token_address
+  df_user_token_addresses = balances_df.groupby(['user_address', 'token_address']).agg({'rating': 'sum'})
+
+  # create a list of (user_address, token_address, rating) records, where user_address and
+  # token_address are 0-indexed
+  current_user = -1
+  user_index = -1
+  ratings = []
+  users = []
+  for user_token_rating in df_user_token_addresses.itertuples():
+    user = user_token_rating[0][0]
+    token = user_token_rating[0][1]
+
+    # as we go, build a (sorted) list of user addresses
+    if user != current_user:
+      users.append(user)
+      user_index += 1
+      current_user = user
+
+    # this search makes the preprocessing time O(r * i log(i)),
+    # r = # ratings, i = # tokens
+    token_index = pds_tokens.searchsorted(token)[0]
+    ratings.append((user_index, token_index, user_token_rating[1]))
+
+  # convert ratings list and user list to np array
+  ratings = np.asarray(ratings)
+  users = np.asarray(users)
+
+  # create train and test sets
+  train_sparse, test_sparse = _create_sparse_train_and_test(ratings,
+                                                         user_index + 1,
+                                                         df_tokens.size)
+
+  return users, pds_tokens.as_matrix(), train_sparse, test_sparse
 
 def _create_sparse_train_and_test(ratings, n_users, n_items):
   """Given ratings, create sparse matrices for train and test sets.

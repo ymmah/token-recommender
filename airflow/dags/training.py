@@ -83,22 +83,41 @@ dag.doc_md = __doc__
 # BigQuery training data query
 
 bql='''
-#legacySql
-SELECT
- fullVisitorId as clientId,
- ArticleID as contentId,
- (nextTime - hits.time) as timeOnPage,
-FROM(
-  SELECT
-    fullVisitorId,
-    hits.time,
-    MAX(IF(hits.customDimensions.index={0},
-           hits.customDimensions.value,NULL)) WITHIN hits AS ArticleID,
-    LEAD(hits.time, 1) OVER (PARTITION BY fullVisitorId, visitNumber
-                             ORDER BY hits.time ASC) as nextTime
-  FROM [{1}.{2}.{3}]
-  WHERE hits.type = "PAGE"
-) HAVING timeOnPage is not null and contentId is not null;
+#standardSQL
+with top_tokens as (
+  select token_address, count(1) as transfer_count
+  from `bigquery-public-data.ethereum_blockchain.token_transfers` as token_transfers
+  group by token_address
+  order by transfer_count desc
+  limit 1000
+),
+token_balances as (
+    with double_entry_book as (
+        select token_address, to_address as address, cast(value as float64) as value, block_timestamp
+        from `bigquery-public-data.ethereum_blockchain.token_transfers`
+        union all
+        select token_address, from_address as address, -cast(value as float64) as value, block_timestamp
+        from `bigquery-public-data.ethereum_blockchain.token_transfers`
+    )
+    select double_entry_book.token_address, address, sum(value) as balance
+    from double_entry_book
+    join top_tokens on top_tokens.token_address = double_entry_book.token_address
+    where address != '0x0000000000000000000000000000000000000000'
+    group by token_address, address
+    having balance > 0
+),
+token_supplies as (
+    select token_address, sum(balance) as supply
+    from token_balances
+    group by token_address
+)
+select 
+    token_balances.token_address, 
+    token_balances.address as user_address, 
+    balance/supply * 100 as rating
+from token_balances
+join token_supplies on token_supplies.token_address = token_balances.token_address
+where balance/supply * 100 > 0.05
 '''
 
 bql = bql.format(ARTICLE_CUSTOM_DIMENSION, PROJECT_ID, DATASET, TABLE_NAME)

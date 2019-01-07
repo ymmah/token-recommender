@@ -123,8 +123,8 @@ def parse_arguments():
   parser.add_argument(
       '--data-type',
       type=str,
-      default='ratings',
-      help='Data type, one of ratings (e.g. MovieLens) or web_views (GA data)'
+      default='token_balances',
+      help='Data type, one of ratings (e.g. MovieLens), web_views (GA data), token_balances (Ethereum data)'
   )
   parser.add_argument(
       '--delimiter',
