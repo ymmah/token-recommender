@@ -30,7 +30,7 @@ ROW_MODEL_FILE = 'model/row.npy'
 COL_MODEL_FILE = 'model/col.npy'
 USER_MODEL_FILE = 'model/user.npy'
 ITEM_MODEL_FILE = 'model/item.npy'
-USER_ITEM_DATA_FILE = 'data/recommendation_events.csv'
+USER_TOKEN_DATA_FILE = 'data/token_balances.csv'
 
 
 class Recommendations(object):
@@ -60,7 +60,7 @@ class Recommendations(object):
     logging.info('Downloading blobs.')
 
     model_files = [ROW_MODEL_FILE, COL_MODEL_FILE, USER_MODEL_FILE,
-                   ITEM_MODEL_FILE, USER_ITEM_DATA_FILE]
+                   ITEM_MODEL_FILE, USER_TOKEN_DATA_FILE]
     for model_file in model_files:
       blob = bucket.blob(model_file)
       with open(os.path.join(local_model_path, model_file), 'wb') as file_obj:
@@ -78,16 +78,16 @@ class Recommendations(object):
 
     # load user_item history into pandas dataframe
     views_df = pd.read_csv(os.path.join(local_model_path,
-                                        USER_ITEM_DATA_FILE), sep=',', header=0)
-    self.user_items = views_df.groupby('clientId')
+                                        USER_TOKEN_DATA_FILE), sep=',', header=0)
+    self.user_items = views_df.groupby('user_address')
 
     logging.info('Finished loading model.')
 
-  def get_recommendations(self, user_id, num_recs):
+  def get_recommendations(self, user_address, num_recs):
     """Given a user id, return list of num_recs recommended item ids.
 
     Args:
-      user_id: (string) The user id
+      user_address: (string) The user address
       num_recs: (int) The number of recommended items to return
 
     Returns:
@@ -95,14 +95,18 @@ class Recommendations(object):
         if user id is found.
       None: The user id was not found.
     """
-    article_recommendations = None
+    token_recommendations = None
 
-    # map user id into ratings matrix user index
-    user_idx = np.searchsorted(self.user_map, user_id)
+    # map user address into ratings matrix user index
+    user_idx = np.searchsorted(self.user_map, user_address)
 
     if user_idx:
       # get already viewed items from views dataframe
-      already_rated = self.user_items.get_group(user_id).contentId
+      try:
+        already_rated = self.user_items.get_group(user_address).token_address
+      except KeyError:
+        already_rated = []
+
       already_rated_idx = [np.searchsorted(self.item_map, i)
                            for i in already_rated]
 
@@ -113,9 +117,9 @@ class Recommendations(object):
                                                  num_recs)
 
       # map article indexes back to article ids
-      article_recommendations = [self.item_map[i] for i in recommendations]
+      token_recommendations = [self.item_map[i] for i in recommendations]
 
-    return article_recommendations
+    return token_recommendations
 
 
 def generate_recommendations(user_idx, user_rated, row_factor, col_factor, k):
