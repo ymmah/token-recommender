@@ -27,8 +27,7 @@ import wals
 def main(args):
   # process input file
   input_file = util.ensure_local_file(args['train_files'][0])
-  user_map, item_map, tr_sparse, test_sparse = model.create_test_and_train_sets(
-      args, input_file, args['data_type'])
+  user_map, item_map, tr_sparse, test_sparse = model.create_test_and_train_sets(input_file)
 
   # train model
   output_row, output_col = model.train_model(args, tr_sparse)
@@ -121,24 +120,6 @@ def parse_arguments():
       help='Switch to turn on or off hyperparam tuning'
   )
   parser.add_argument(
-      '--data-type',
-      type=str,
-      default='token_balances',
-      help='Data type, one of ratings (e.g. MovieLens), web_views (GA data), token_balances (Ethereum data)'
-  )
-  parser.add_argument(
-      '--delimiter',
-      type=str,
-      default='\t',
-      help='Delimiter for csv data files'
-  )
-  parser.add_argument(
-      '--headers',
-      default=False,
-      action='store_true',
-      help='Input file has a header row'
-  )
-  parser.add_argument(
       '--use-optimized',
       default=False,
       action='store_true',
@@ -176,10 +157,8 @@ def parse_arguments():
   params = model.DEFAULT_PARAMS
   params.update({k: arg for k, arg in arguments.iteritems() if arg is not None})
   if args.use_optimized:
-    if args.data_type == 'web_views':
-      params.update(model.OPTIMIZED_PARAMS_WEB)
-    else:
-      params.update(model.OPTIMIZED_PARAMS)
+    params.update(model.OPTIMIZED_PARAMS)
+
   params.update(task_data)
   params.update({'output_dir': output_dir})
   params.update({'job_name': job_name})

@@ -117,7 +117,7 @@ select
     balance/supply * 100 as rating
 from token_balances
 join token_supplies on token_supplies.token_address = token_balances.token_address
-where balance/supply * 100 > 0.05
+where balance/supply * 100 > 0.001
 '''
 
 bql = bql.format(ARTICLE_CUSTOM_DIMENSION, PROJECT_ID, DATASET, TABLE_NAME)
@@ -149,7 +149,6 @@ output_dir = BUCKET
 training_args = ['--job-dir', job_dir,
                  '--train-files', training_file,
                  '--output-dir', output_dir,
-                 '--data-type', 'web_views',
                  '--use-optimized']
 
 t3 = MLEngineTrainingOperator(

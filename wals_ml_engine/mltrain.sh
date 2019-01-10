@@ -14,32 +14,24 @@
 
 
 usage () {
-  echo "usage: mltrain.sh [local | train | tune] [gs://]<input_file>.csv
-                  [--data-type ratings|web_views|token_balances]
-                  [--delimiter <delim>]
-                  [--use-optimized]
-                  [--headers]
+  echo "usage: mltrain.sh [local | train | tune] [gs://]<input_file>.csv [--use-optimized]
 
 Use 'local' to train locally with a local data file, and 'train' and 'tune' to
 run on ML Engine.  For ML Engine jobs the input file must reside on GCS.
 
 Optional args:
-  --data-type:      Default to 'ratings', meaning MovieLens ratings from 0-5.
-                    Set to 'web_views' for Google Analytics data.
-  --delimiter:      CSV delimiter, default to '\t'.
   --use-optimized:  Use optimized hyperparamters, default False.
-  --headers:        Default False for 'ratings', True for 'web_views'.
 
 Examples:
 
 # train locally with unoptimized hyperparams
-./mltrain.sh local ../data/recommendation_events.csv --data-type web_views
+./mltrain.sh local ../data/token_balances.csv
 
 # train on ML Engine with optimized hyperparams
-./mltrain.sh train gs://rec_serve/data/recommendation_events.csv --data-type web_views --use-optimized
+./mltrain.sh train gs://your_bucket/data/token_balances.csv --use-optimized
 
 # tune hyperparams on ML Engine:
-./mltrain.sh tune gs://rec_serve/data/recommendation_events.csv --data-type web_views
+./mltrain.sh tune gs://your_bucket/data/token_balances.csv
 "
 
 }
@@ -49,7 +41,7 @@ date
 TIME=`date +"%Y%m%d_%H%M%S"`
 
 # CHANGE TO YOUR BUCKET
-BUCKET="gs://rec_serve"
+BUCKET="gs://your_bucket"
 
 if [[ $# < 2 ]]; then
   usage
@@ -93,12 +85,6 @@ elif [[ $TRAIN_JOB == "tune" ]]; then
 
   # set configuration for tuning
   CONFIG_TUNE="trainer/config/config_tune.json"
-  for i in $ARGS ; do
-    if [[ "$i" == "web_views" ]]; then
-      CONFIG_TUNE="trainer/config/config_tune_web.json"
-      break
-    fi
-  done
 
   gcloud ml-engine jobs submit training ${JOB_NAME} \
     --region ${REGION} \

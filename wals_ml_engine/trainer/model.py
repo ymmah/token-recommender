@@ -36,20 +36,11 @@ DEFAULT_PARAMS = {
     'unobs_weight': 0.01,
     'wt_type': 0,
     'feature_wt_factor': 130.0,
-    'feature_wt_exp': 0.08,
-    'delimiter': '\t'
+    'feature_wt_exp': 0.08
 }
 
-# parameters optimized with hypertuning for the MovieLens data set
+# parameters optimized with hypertuning
 OPTIMIZED_PARAMS = {
-    'latent_factors': 34,
-    'regularization': 9.83,
-    'unobs_weight': 0.001,
-    'feature_wt_factor': 189.8,
-}
-
-# parameters optimized with hypertuning for the included web views data set
-OPTIMIZED_PARAMS_WEB = {
     'latent_factors': 30,
     'regularization': 7.27,
     'unobs_weight': 0.01,
@@ -57,164 +48,24 @@ OPTIMIZED_PARAMS_WEB = {
 }
 
 
-def create_test_and_train_sets(args, input_file, data_type='ratings'):
-  """Create test and train sets, for different input data types.
+def create_test_and_train_sets(input_file):
+  """Create test and train sets.
 
   Args:
-    args: input args for job
     input_file: path to csv data file
-    data_type:  'ratings': MovieLens style ratings matrix
-                'web_views': Google Analytics time-on-page data
 
   Returns:
-    array of user IDs for each row of the ratings matrix
-    array of item IDs for each column of the rating matrix
+    array of user addresses for each row of the ratings matrix
+    array of token addresses for each column of the rating matrix
     sparse coo_matrix for training
     sparse coo_matrix for test
 
   Raises:
-    ValueError: if invalid data_type is supplied
+    ValueError: if invalid data type is supplied
   """
-  if data_type == 'ratings':
-    return _ratings_train_and_test(args['headers'], args['delimiter'],
-                                   input_file)
-  elif data_type == 'web_views':
-    return _page_views_train_and_test(input_file)
-  elif data_type == 'token_balances':
-    return _token_balances_train_and_test(input_file)
-  else:
-    raise ValueError('data_type arg value %s not supported.' % data_type)
 
+  return _token_balances_train_and_test(input_file)
 
-def _ratings_train_and_test(use_headers, delimiter, input_file):
-  """Load data set.  Assumes Movielens header, format etc.
-
-  MovieLens data starts with user_id=1.  The max user id is close to
-  the number of users, but there may be missing user_id's or item ids
-  (i.e. movies). For our sparse matrices we need to map the user/item ids
-  down to a zero-based set of indices, without missing values.
-
-  Args:
-    use_headers: (boolean) true = headers, false = no headers
-    delimiter: (string) delimiter to use for csv
-    input_file: path to csv data file
-
-  Returns:
-    array of user IDs for each row of the ratings matrix
-    array of item IDs for each column of the rating matrix
-    sparse coo_matrix for training
-    sparse coo_matrix for test
-  """
-  headers = ['user_id', 'item_id', 'rating', 'timestamp']
-  header_row = 0 if use_headers else None
-  ratings_df = pd.read_csv(input_file,
-                           sep=delimiter,
-                           names=headers,
-                           header=header_row,
-                           dtype={
-                               'user_id': np.int32,
-                               'item_id': np.int32,
-                               'rating': np.float32,
-                               'timestamp': np.int32,
-                           })
-
-  np_users = ratings_df.user_id.as_matrix()
-  np_items = ratings_df.item_id.as_matrix()
-  unique_users = np.unique(np_users)
-  unique_items = np.unique(np_items)
-
-  n_users = unique_users.shape[0]
-  n_items = unique_items.shape[0]
-
-  # make indexes for users and items if necessary
-  max_user = unique_users[-1]
-  max_item = unique_items[-1]
-  if n_users != max_user or n_items != max_item:
-    # make an array of 0-indexed unique user ids corresponding to the dataset
-    # stack of user ids
-    z = np.zeros(max_user+1, dtype=int)
-    z[unique_users] = np.arange(n_users)
-    u_r = z[np_users]
-
-    # make an array of 0-indexed unique item ids corresponding to the dataset
-    # stack of item ids
-    z = np.zeros(max_item+1, dtype=int)
-    z[unique_items] = np.arange(n_items)
-    i_r = z[np_items]
-
-    # construct the ratings set from the three stacks
-    np_ratings = ratings_df.rating.as_matrix()
-    ratings = np.zeros((np_ratings.shape[0], 3), dtype=object)
-    ratings[:, 0] = u_r
-    ratings[:, 1] = i_r
-    ratings[:, 2] = np_ratings
-  else:
-    ratings = ratings_df.as_matrix(['user_id', 'item_id', 'rating'])
-    # deal with 1-based user indices
-    ratings[:, 0] -= 1
-    ratings[:, 1] -= 1
-
-  tr_sparse, test_sparse = _create_sparse_train_and_test(ratings,
-                                                         n_users, n_items)
-
-  return ratings[:, 0], ratings[:, 1], tr_sparse, test_sparse
-
-
-def _page_views_train_and_test(input_file):
-  """Load page views dataset, and create train and set sparse matrices.
-
-  Assumes 'clientId', 'contentId', and 'timeOnPage' columns.
-
-  Args:
-    input_file: path to csv data file
-
-  Returns:
-    array of user IDs for each row of the ratings matrix
-    array of item IDs for each column of the rating matrix
-    sparse coo_matrix for training
-    sparse coo_matrix for test
-  """
-  views_df = pd.read_csv(input_file, sep=',', header=0)
-
-  df_items = pd.DataFrame({'contentId': views_df.contentId.unique()})
-  df_sorted_items = df_items.sort_values('contentId').reset_index()
-  pds_items = df_sorted_items.contentId
-
-  # preprocess data. df.groupby.agg sorts clientId and contentId
-  df_user_items = views_df.groupby(['clientId', 'contentId']
-                                  ).agg({'timeOnPage': 'sum'})
-
-  # create a list of (userId, itemId, timeOnPage) ratings, where userId and
-  # clientId are 0-indexed
-  current_u = -1
-  ux = -1
-  pv_ratings = []
-  user_ux = []
-  for timeonpg in df_user_items.itertuples():
-    user = timeonpg[0][0]
-    item = timeonpg[0][1]
-
-    # as we go, build a (sorted) list of user ids
-    if user != current_u:
-      user_ux.append(user)
-      ux += 1
-      current_u = user
-
-    # this search makes the preprocessing time O(r * i log(i)),
-    # r = # ratings, i = # items
-    ix = pds_items.searchsorted(item)[0]
-    pv_ratings.append((ux, ix, timeonpg[1]))
-
-  # convert ratings list and user map to np array
-  pv_ratings = np.asarray(pv_ratings)
-  user_ux = np.asarray(user_ux)
-
-  # create train and test sets
-  tr_sparse, test_sparse = _create_sparse_train_and_test(pv_ratings,
-                                                         ux + 1,
-                                                         df_items.size)
-
-  return user_ux, pds_items.as_matrix(), tr_sparse, test_sparse
 
 def _token_balances_train_and_test(input_file):
   """Load token_balances dataset, and create train and set sparse matrices.
