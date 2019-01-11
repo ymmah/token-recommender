@@ -15,7 +15,7 @@
 swagger: "2.0"
 info:
   title: "Recommendations"
-  description: "Get recommended items for a User given their address."
+  description: "Get recommended tokens for a user given their address."
   version: "1.0.0"
 # This field will be replaced by the deploy_api.sh script.
 host: "YOUR-PROJECT-ID.appspot.com"
@@ -24,7 +24,7 @@ schemes:
 paths:
   "/recommendation":
     get:
-      description: "Get recommended items for a User given their address."
+      description: "Get recommended tokens for a user given their address."
       operationId: "recommendation"
       parameters:
         -
@@ -43,4 +43,4 @@ paths:
           schema:
             type: string
         400:
-          description: "The User Address is not found or missing."
+          description: "The user address is not found or missing."
