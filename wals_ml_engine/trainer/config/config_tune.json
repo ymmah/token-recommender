@@ -1,7 +1,7 @@
 {
   "trainingInput": {
     "scaleTier": "CUSTOM",
-    "masterType": "standard_gpu",
+    "masterType": "large_model",
     "hyperparameters": {
         "goal": "MINIMIZE",
         "params": [
@@ -31,6 +31,13 @@
             "type": "DOUBLE",
             "minValue": ".0001",
             "maxValue": "10",
+            "scaleType": "UNIT_LINEAR_SCALE"
+          },
+          {
+            "parameterName": "num_iters",
+            "type": "INTEGER",
+            "minValue": "10",
+            "maxValue": "30",
             "scaleType": "UNIT_LINEAR_SCALE"
           }
         ],

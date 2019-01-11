@@ -162,12 +162,7 @@ def parse_arguments():
   params.update(task_data)
   params.update({'output_dir': output_dir})
   params.update({'job_name': job_name})
-
-  # For web_view data, default to using the exponential weight formula
-  # with feature weight exp.
-  # For movie lens data, default to the linear weight formula.
-  if args.data_type == 'web_views':
-    params.update({'wt_type': wals.LOG_RATINGS})
+  params.update({'wt_type': wals.LOG_RATINGS})
 
   return params
 
