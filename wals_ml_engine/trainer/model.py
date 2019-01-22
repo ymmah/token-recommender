@@ -85,7 +85,7 @@ def _token_balances_train_and_test(input_file):
   balances_df = pd.read_csv(input_file,
                            sep=',',
                            names=headers,
-                           header=None,
+                           header=0,
                            dtype={
                                'token_address': np.str,
                                'user_address': np.str,
