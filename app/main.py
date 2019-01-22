@@ -33,7 +33,7 @@ def recommendation():
 
   # validate args
   if user_address is None:
-    return 'No User address provided.', 400
+    return 'No user address provided.', 400
   if num_recs is None:
     num_recs = DEFAULT_RECS
   try:
@@ -45,9 +45,9 @@ def recommendation():
   rec_list = rec_util.get_recommendations(user_address, nrecs_int)
 
   if rec_list is None:
-    return 'User Id not found : %s' % user_address, 400
+    return 'User address not found : %s' % user_address, 400
 
-  json_response = jsonify({'token_addresses': [str(i) for i in rec_list]})
+  json_response = jsonify(rec_list)
   return json_response, 200
 
 
