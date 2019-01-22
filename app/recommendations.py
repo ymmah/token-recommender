@@ -98,7 +98,7 @@ class Recommendations(object):
             if user id is found.
           None: The user id was not found.
         """
-        token_address_recommendations = []
+        token_address_and_rating_list = []
 
         # map user address into ratings matrix user index
         user_idx = np.searchsorted(self.user_map, user_address)
@@ -114,21 +114,21 @@ class Recommendations(object):
                                  for i in already_rated]
 
             # generate list of recommended article indexes from model
-            recommendations = generate_recommendations(user_idx, already_rated_idx,
+            index_and_rating_list = generate_recommendations(user_idx, already_rated_idx,
                                                        self.user_factor,
                                                        self.item_factor,
                                                        num_recs)
 
             # map article indexes back to article ids
-            token_address_recommendations = [self.item_map[i] for i in recommendations]
+            token_address_and_rating_list = [(self.item_map[i], rating) for i, rating in index_and_rating_list]
 
-        token_recommendations = self.map_to_tokens(token_address_recommendations)
+        token_recommendations = self.map_to_tokens(token_address_and_rating_list)
 
         return token_recommendations
 
-    def map_to_tokens(self, token_addresses):
+    def map_to_tokens(self, token_address_and_rating_list):
         result = []
-        for address in token_addresses:
+        for address, rating in token_address_and_rating_list:
             token = self._token_service.get_token_by_address(address)
             if token is None:
                 token = {
@@ -136,6 +136,7 @@ class Recommendations(object):
                     'symbol': 'Unknown',
                     'name': 'Unknown'
                 }
+            token['rating'] = rating
             result.append(token)
         return result
 
@@ -177,6 +178,8 @@ def generate_recommendations(user_idx, user_rated, row_factor, col_factor, k):
     # remove previously rated items and take top k
     recommended_items = [i for i in candidate_items if i not in user_rated]
     recommended_items = recommended_items[-k:]
+
+    recommended_items = [(i, float(pred_ratings[i])) for i in recommended_items]
 
     # flip to sort highest rated first
     recommended_items.reverse()

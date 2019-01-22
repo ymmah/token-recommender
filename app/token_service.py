@@ -40,4 +40,5 @@ class TokenService(object):
         self.tokens = tokens_df.to_dict('index')
 
     def get_token_by_address(self, address):
-        return self.tokens.get(address)
+        token = self.tokens.get(address)
+        return token.copy() if token is not None else None

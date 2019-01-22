@@ -13,8 +13,9 @@
 # limitations under the License.
 
 """Main module for App Engine app."""
+import json
 
-from flask import Flask, jsonify, request
+from flask import Flask, request
 
 from recommendations import Recommendations
 
@@ -47,7 +48,7 @@ def recommendation():
   if rec_list is None:
     return 'User address not found : %s' % user_address, 400
 
-  json_response = jsonify(rec_list)
+  json_response = json.dumps(rec_list)
   return json_response, 200
 
 
