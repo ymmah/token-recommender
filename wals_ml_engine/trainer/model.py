@@ -144,6 +144,7 @@ def _create_sparse_train_and_test(ratings, n_users, n_items):
   """
   # pick a random test set of entries, sorted ascending
   test_set_size = len(ratings) / TEST_SET_RATIO
+  np.random.seed(42)
   test_set_idx = np.random.choice(xrange(len(ratings)),
                                   size=test_set_size, replace=False)
   test_set_idx = sorted(test_set_idx)
@@ -259,7 +260,7 @@ def generate_recommendations(user_idx, user_rated, row_factor, col_factor, k):
   """
 
   # bounds checking for args
-  assert (row_factor.shape[0] - len(user_rated)) >= k
+  assert (col_factor.shape[0] - len(user_rated)) >= k
 
   # retrieve user factor
   user_f = row_factor[user_idx]
@@ -279,4 +280,3 @@ def generate_recommendations(user_idx, user_rated, row_factor, col_factor, k):
   recommended_items.reverse()
 
   return recommended_items
-
