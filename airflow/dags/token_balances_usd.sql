@@ -4,9 +4,9 @@ with tokens as (
   from `crypto-etl-ethereum-dev.token_recommender.tokens` as tokens
   where true
     and tokens.symbol is not null
-    and tokens.price is not null
+    and tokens.price is not null and tokens.price > 0
     and tokens.eth_address is not null
-    and tokens.decimals is not null and tokens.decimals > 0
+    and tokens.decimals is not null and tokens.decimals >= 0
 ),
 token_balances as (
     with double_entry_book as (
@@ -43,4 +43,4 @@ select
     balance as rating
 from filtered_token_balances_usd
 where true
-  -- token_count >= 2
+  -- and token_count >= 2
