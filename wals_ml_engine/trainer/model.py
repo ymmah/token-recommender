@@ -34,9 +34,9 @@ DEFAULT_PARAMS = {
     'num_iters': 20,
     'regularization': 0.07,
     'unobs_weight': 0.01,
-    'wt_type': 0,
+    'wt_type': wals.LOG_RATINGS,
     'feature_wt_factor': 130.0,
-    'feature_wt_exp': 0.08
+    'feature_wt_exp': 1.0
 }
 
 # parameters optimized with hypertuning
@@ -45,6 +45,16 @@ OPTIMIZED_PARAMS = {
     'regularization': 0.12,
     'unobs_weight': 0.001,
     'feature_wt_exp': 9.43,
+    'wt_type': wals.LOG_RATINGS
+}
+
+# experimental parameters
+EXPERIMENTAL_PARAMS = {
+    'latent_factors': 5,
+    'regularization': 0.12,
+    'unobs_weight': 0.001,
+    'feature_wt_exp': 9.43,
+    'wt_type': wals.LOG_RATINGS
 }
 
 
@@ -246,7 +256,7 @@ def generate_recommendations(user_idx, user_rated, row_factor, col_factor, k):
     user_idx: the row index of the user in the ratings matrix,
 
     user_rated: the list of item indexes (column indexes in the ratings matrix)
-      previously rated by that user (which will be excluded from the
+      previously rated by that user (which will be excluded from then
       recommendations)
 
     row_factor: the row factors of the recommendation model

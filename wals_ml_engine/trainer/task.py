@@ -138,6 +138,14 @@ def parse_arguments():
       help='Use optimized hyperparameters'
   )
 
+  parser.add_argument(
+      '--use-experimental',
+      default=False,
+      action='store_true',
+      help='Use experimental hyperparameters'
+  )
+
+
   args = parser.parse_args()
   arguments = args.__dict__
 
@@ -170,11 +178,15 @@ def parse_arguments():
   params.update({k: arg for k, arg in arguments.iteritems() if arg is not None})
   if args.use_optimized:
     params.update(model.OPTIMIZED_PARAMS)
+  elif args.use_experimental:
+    params.update(model.EXPERIMENTAL_PARAMS)
 
   params.update(task_data)
   params.update({'output_dir': output_dir})
   params.update({'job_name': job_name})
-  params.update({'wt_type': wals.LOG_RATINGS})
+
+  print("Using params:")
+  print(params)
 
   return params
 
