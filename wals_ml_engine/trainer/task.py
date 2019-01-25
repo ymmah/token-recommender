@@ -39,12 +39,24 @@ def main(args):
   train_rmse = wals.get_rmse(output_row, output_col, tr_sparse)
   test_rmse = wals.get_rmse(output_row, output_col, test_sparse)
 
+  precision, recall, pop_precision, pop_recall = wals.get_precision_recall(tr_sparse,
+                                                                           test_sparse,
+                                                                           output_row,
+                                                                           output_col,
+                                                                           5)
+
   if args['hypertune']:
     # write test_rmse metric for hyperparam tuning
     util.write_hptuning_metric(args, test_rmse)
 
   tf.logging.info('train RMSE = %.2f' % train_rmse)
   tf.logging.info('test RMSE = %.2f' % test_rmse)
+
+  tf.logging.info('test precision = %.2f%%' % (100 * precision))
+  tf.logging.info('test recall = %.2f%%' % (100 * recall))
+
+  tf.logging.info('popularity precision = %.2f%%' % (100.0 * pop_precision))
+  tf.logging.info('popularity recall = %.2f%%' % (100.0 * pop_recall))
 
 
 def parse_arguments():

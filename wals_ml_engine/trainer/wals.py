@@ -19,6 +19,64 @@ import math
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.factorization.python.ops import factorization_ops
+import model
+from pandas import Series
+from tqdm import tqdm
+
+def get_most_popular(sparse, k):
+  """Get the k most popular items in sparse based on number of ratings."""
+  return list(Series(sparse.nonzero()[1]).value_counts()[:k].index)
+
+
+def get_rated_items_for_user(user_idx, sparse):
+    """Get rated items for a given user."""
+    candidate_items = sparse.getrow(user_idx)
+    return list(candidate_items.indices)
+
+
+def precision(recommendations, actuals):
+  """Calculate precision of recommendations on actuals."""
+  a = set(actuals)
+  r = set(recommendations)
+  return 1.0 * len(a.intersection(r)) / len(r)
+
+def recall(recommendations, actuals):
+  """Calculate recall of recommendations on actuals."""
+  a = set(actuals)
+  r = set(recommendations)
+  return 1.0 * len(a.intersection(r)) / len(a)
+
+
+def get_precision_recall(tr_sparse, test_sparse, output_row, output_col, k):
+  """Compute precision and recall between predicted and actual ratings.
+
+  Args:
+    tr_sparse: training set used to get most popular + already rated items
+    test_sparse: test set used for evaluation of recommender
+    output_row: evaluated numpy array of row_factor
+    output_col: evaluated numpy array of col_factor
+    k: number of recommendations to make per user
+
+  Returns:
+    (precision, recall)
+  """
+  precision_list = []
+  recall_list = []
+  pop_precision_list = []
+  pop_recall_list = []
+  test_users = set(test_sparse.row)
+  train_users = set(tr_sparse.row)
+  users_in_both_train_and_test = test_users.intersection(train_users)
+  popularity_recs = get_most_popular(tr_sparse, k)
+  for u in tqdm(users_in_both_train_and_test):
+    user_rated = get_rated_items_for_user(u, tr_sparse)
+    test_set = get_rated_items_for_user(u, test_sparse)
+    recs = model.generate_recommendations(u, user_rated, output_row, output_col, k)
+    precision_list.append(precision(recs, test_set))
+    pop_precision_list.append(precision(popularity_recs, test_set))
+    recall_list.append(recall(recs, test_set))
+    pop_recall_list.append(recall(popularity_recs, test_set))
+  return np.mean(precision_list), np.mean(recall_list), np.mean(pop_precision_list), np.mean(pop_recall_list)
 
 
 def get_rmse(output_row, output_col, actual):
