@@ -39,7 +39,11 @@ def main(args):
   train_rmse = wals.get_rmse(output_row, output_col, tr_sparse)
   test_rmse = wals.get_rmse(output_row, output_col, test_sparse)
 
-  precision, recall, pop_precision, pop_recall = wals.get_precision_recall(tr_sparse, test_sparse, output_row, output_col, 10, user_map, item_map)
+  precision, recall, pop_precision, pop_recall = wals.get_precision_recall(tr_sparse,
+                                                                           test_sparse,
+                                                                           output_row,
+                                                                           output_col,
+                                                                           5)
 
   if args['hypertune']:
     # write test_rmse metric for hyperparam tuning
