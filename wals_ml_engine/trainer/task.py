@@ -17,6 +17,7 @@
 import argparse
 import json
 import os
+import pickle
 
 import scipy.sparse as sp
 import tensorflow as tf
@@ -77,6 +78,13 @@ def train_and_evaluate_lightfm(args):
     lfm = LightFM(loss='warp', no_components=no_components, learning_schedule='adagrad')
     lfm.fit(train, epochs=20, num_threads=2)
 
+    job_dir = args['job_dir']
+    if not os.path.exists(job_dir):
+        os.makedirs(job_dir)
+    print("Saving model to {} ...").format(job_dir)
+    with open(os.path.join(job_dir, 'model.pickle'), 'w') as output_file:
+        output_file.write(pickle.dumps(lfm))
+
     print("Evaluating model ...")
     test_precision = precision_at_k(lfm, test, train, k=k).mean()
     print("test precision@%d: %.2f%%" % (k, test_precision * 100.0))
@@ -90,12 +98,14 @@ def train_and_evaluate_lightfm(args):
 
     pop_precision = precision_at_k(popularity_model(k=k), test, train, k=k).mean()
     print("popularity precision@%d: %.2f%%" % (k, pop_precision * 100.0))
+    pop_recall = recall_at_k(popularity_model(k=k), test, train, k=k).mean()
+    print("popularity recall@%d: %.2f%%" % (k, pop_recall * 100.0))
 
 
 def popularity_model(k=10):
     def get_most_popular(sparse):
         """Get the k most popular items in sparse based on number of ratings."""
-        return list(Series(sparse.nonzero()[1]).value_counts()[:k].index)
+        return list(Series(sparse.nonzero()[1]).value_counts()[:(k*10)].index)
 
     class PopularityModel:
         def predict_rank(self, test_interactions, train_interactions, **kwargs):
@@ -104,14 +114,20 @@ def popularity_model(k=10):
             data = []
             rows = []
             cols = []
-            for item_rank, item in enumerate(most_popular):
-                # TODO: Skip already rated items in train_interactions
-                for user in range(0, num_users):
-                    has_rating = len(test_interactions.getrow(user).getcol(item).data) >= 1
-                    if has_rating:
-                        data.append(float(item_rank))
+            for user in range(0, num_users):
+                test_items = set(test_interactions.getrow(user).indices)
+                train_items = set(train_interactions.getrow(user).indices)
+                recommended_items = [item for item in most_popular if item not in train_items]
+                predictions = set(recommended_items).intersection(test_items)
+
+                recommended_ranks = {item: index for index, item in enumerate(recommended_items)}
+
+                for prediction in predictions:
+                    rank = recommended_ranks.get(prediction)
+                    if rank is not None and rank < k:
+                        data.append(float(rank))
                         rows.append(user)
-                        cols.append(item)
+                        cols.append(prediction)
 
             ranks = sp.csr_matrix((data, (rows, cols)), shape=test_interactions.shape)
 
