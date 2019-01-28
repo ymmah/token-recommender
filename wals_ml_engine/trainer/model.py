@@ -41,10 +41,10 @@ DEFAULT_PARAMS = {
 
 # parameters optimized with hypertuning
 OPTIMIZED_PARAMS = {
-    'latent_factors': 22,
-    'regularization': 0.12,
+    'latent_factors': 10,
+    'regularization': 0.33,
     'unobs_weight': 0.001,
-    'feature_wt_exp': 9.43,
+    'feature_wt_exp': 3.93,
 }
 
 
