@@ -18,13 +18,15 @@ import argparse
 import json
 import os
 import tensorflow as tf
+from lightfm import LightFM
+from lightfm.evaluation import precision_at_k, recall_at_k
 
 import model
 import util
 import wals
 
 
-def main(args):
+def train_and_evaluate_wals(args):
   # process input file
   input_file = util.ensure_local_file(args['train_files'][0])
   user_map, item_map, tr_sparse, test_sparse = model.create_test_and_train_sets(input_file)
@@ -58,6 +60,29 @@ def main(args):
   tf.logging.info('popularity precision = %.2f%%' % (100.0 * pop_precision))
   tf.logging.info('popularity recall = %.2f%%' % (100.0 * pop_recall))
 
+def train_and_evaluate_lightfm(args):
+  k = 5
+  no_components = 11
+
+  input_file = util.ensure_local_file(args['train_files'][0])
+
+  print("Creating datasets ...")
+  users, items, train, test = model.create_test_and_train_sets(input_file)
+
+  print("Training model ...")
+  lfm = LightFM(loss='warp', no_components=no_components, learning_schedule='adagrad')
+  lfm.fit(train, epochs=20, num_threads=2)
+
+  print("Evaluating model ...")
+  test_precision = precision_at_k(lfm, test, train, k=k).mean()
+  print("test precision@%d: %.2f%%" % (k, test_precision*100.0))
+  test_recall = recall_at_k(lfm, test, train, k=k).mean()
+  print("test recall@%d: %.2f%%" % (k, test_recall*100.0))
+
+  train_precision = precision_at_k(lfm, train, k=k).mean()
+  print("train precision@%d: %.2f%%" % (k, train_precision*100.0))
+  train_recall = recall_at_k(lfm, train, k=k).mean()
+  print("train recall@%d: %.2f%%" % (k, train_recall*100.0))
 
 def parse_arguments():
   """Parse job arguments."""
@@ -181,6 +206,6 @@ def parse_arguments():
 
 if __name__ == '__main__':
   job_args = parse_arguments()
-  main(job_args)
+  train_and_evaluate_lightfm(job_args)
 
 
