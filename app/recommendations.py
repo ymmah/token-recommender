@@ -115,9 +115,9 @@ class Recommendations(object):
 
             # generate list of recommended article indexes from model
             index_and_rating_list = generate_recommendations(user_idx, already_rated_idx,
-                                                       self.user_factor,
-                                                       self.item_factor,
-                                                       num_recs)
+                                                             self.user_factor,
+                                                             self.item_factor,
+                                                             num_recs)
 
             # map article indexes back to article ids
             token_address_and_rating_list = [(self.item_map[i], rating) for i, rating in index_and_rating_list]

@@ -23,9 +23,10 @@ import model
 from pandas import Series
 from tqdm import tqdm
 
+
 def get_most_popular(sparse, k):
-  """Get the k most popular items in sparse based on number of ratings."""
-  return list(Series(sparse.nonzero()[1]).value_counts()[:k].index)
+    """Get the k most popular items in sparse based on number of ratings."""
+    return list(Series(sparse.nonzero()[1]).value_counts()[:k].index)
 
 
 def get_rated_items_for_user(user_idx, sparse):
@@ -35,100 +36,102 @@ def get_rated_items_for_user(user_idx, sparse):
 
 
 def precision(recommendations, actuals):
-  """Calculate precision of recommendations on actuals."""
-  a = set(actuals)
-  r = set(recommendations)
-  return 1.0 * len(a.intersection(r)) / len(r)
+    """Calculate precision of recommendations on actuals."""
+    a = set(actuals)
+    r = set(recommendations)
+    return 1.0 * len(a.intersection(r)) / len(r)
+
 
 def recall(recommendations, actuals):
-  """Calculate recall of recommendations on actuals."""
-  a = set(actuals)
-  r = set(recommendations)
-  return 1.0 * len(a.intersection(r)) / len(a)
+    """Calculate recall of recommendations on actuals."""
+    a = set(actuals)
+    r = set(recommendations)
+    return 1.0 * len(a.intersection(r)) / len(a)
 
 
 def get_precision_recall(tr_sparse, test_sparse, output_row, output_col, k):
-  """Compute precision and recall between predicted and actual ratings.
+    """Compute precision and recall between predicted and actual ratings.
 
-  Args:
-    tr_sparse: training set used to get most popular + already rated items
-    test_sparse: test set used for evaluation of recommender
-    output_row: evaluated numpy array of row_factor
-    output_col: evaluated numpy array of col_factor
-    k: number of recommendations to make per user
+    Args:
+      tr_sparse: training set used to get most popular + already rated items
+      test_sparse: test set used for evaluation of recommender
+      output_row: evaluated numpy array of row_factor
+      output_col: evaluated numpy array of col_factor
+      k: number of recommendations to make per user
 
-  Returns:
-    (precision, recall)
-  """
-  precision_list = []
-  recall_list = []
-  pop_precision_list = []
-  pop_recall_list = []
-  test_users = set(test_sparse.row)
-  train_users = set(tr_sparse.row)
-  users_in_both_train_and_test = test_users.intersection(train_users)
-  popularity_recs = get_most_popular(tr_sparse, k)
-  for u in tqdm(users_in_both_train_and_test):
-    user_rated = get_rated_items_for_user(u, tr_sparse)
-    test_set = get_rated_items_for_user(u, test_sparse)
-    recs = model.generate_recommendations(u, user_rated, output_row, output_col, k)
-    precision_list.append(precision(recs, test_set))
-    pop_precision_list.append(precision(popularity_recs, test_set))
-    recall_list.append(recall(recs, test_set))
-    pop_recall_list.append(recall(popularity_recs, test_set))
-  return np.mean(precision_list), np.mean(recall_list), np.mean(pop_precision_list), np.mean(pop_recall_list)
+    Returns:
+      (precision, recall)
+    """
+    precision_list = []
+    recall_list = []
+    pop_precision_list = []
+    pop_recall_list = []
+    test_users = set(test_sparse.row)
+    train_users = set(tr_sparse.row)
+    users_in_both_train_and_test = test_users.intersection(train_users)
+    popularity_recs = get_most_popular(tr_sparse, k)
+    for u in tqdm(users_in_both_train_and_test):
+        user_rated = get_rated_items_for_user(u, tr_sparse)
+        test_set = get_rated_items_for_user(u, test_sparse)
+        recs = model.generate_recommendations(u, user_rated, output_row, output_col, k)
+        precision_list.append(precision(recs, test_set))
+        pop_precision_list.append(precision(popularity_recs, test_set))
+        recall_list.append(recall(recs, test_set))
+        pop_recall_list.append(recall(popularity_recs, test_set))
+    return np.mean(precision_list), np.mean(recall_list), np.mean(pop_precision_list), np.mean(pop_recall_list)
 
 
 def get_rmse(output_row, output_col, actual):
-  """Compute rmse between predicted and actual ratings.
+    """Compute rmse between predicted and actual ratings.
 
-  Args:
-    output_row: evaluated numpy array of row_factor
-    output_col: evaluated numpy array of col_factor
-    actual: coo_matrix of actual (test) values
+    Args:
+      output_row: evaluated numpy array of row_factor
+      output_col: evaluated numpy array of col_factor
+      actual: coo_matrix of actual (test) values
 
-  Returns:
-    rmse
-  """
-  mse = 0
-  for i in xrange(actual.data.shape[0]):
-    row_pred = output_row[actual.row[i]]
-    col_pred = output_col[actual.col[i]]
-    err = actual.data[i] - np.dot(row_pred, col_pred)
-    mse += err * err
-  mse /= actual.data.shape[0]
-  rmse = math.sqrt(mse)
-  return rmse
+    Returns:
+      rmse
+    """
+    mse = 0
+    for i in xrange(actual.data.shape[0]):
+        row_pred = output_row[actual.row[i]]
+        col_pred = output_col[actual.col[i]]
+        err = actual.data[i] - np.dot(row_pred, col_pred)
+        mse += err * err
+    mse /= actual.data.shape[0]
+    rmse = math.sqrt(mse)
+    return rmse
 
 
 def simple_train(model, input_tensor, num_iterations):
-  """Helper function to train model on input for num_iterations.
+    """Helper function to train model on input for num_iterations.
 
-  Args:
-    model:            WALSModel instance
-    input_tensor:     SparseTensor for input ratings matrix
-    num_iterations:   number of row/column updates to run
+    Args:
+      model:            WALSModel instance
+      input_tensor:     SparseTensor for input ratings matrix
+      num_iterations:   number of row/column updates to run
 
-  Returns:
-    tensorflow session, for evaluating results
-  """
-  sess = tf.Session(graph=input_tensor.graph)
+    Returns:
+      tensorflow session, for evaluating results
+    """
+    sess = tf.Session(graph=input_tensor.graph)
 
-  with input_tensor.graph.as_default():
-    row_update_op = model.update_row_factors(sp_input=input_tensor)[1]
-    col_update_op = model.update_col_factors(sp_input=input_tensor)[1]
+    with input_tensor.graph.as_default():
+        row_update_op = model.update_row_factors(sp_input=input_tensor)[1]
+        col_update_op = model.update_col_factors(sp_input=input_tensor)[1]
 
-    sess.run(model.initialize_op)
-    sess.run(model.worker_init)
-    for _ in xrange(num_iterations):
-      sess.run(model.row_update_prep_gramian_op)
-      sess.run(model.initialize_row_update_op)
-      sess.run(row_update_op)
-      sess.run(model.col_update_prep_gramian_op)
-      sess.run(model.initialize_col_update_op)
-      sess.run(col_update_op)
+        sess.run(model.initialize_op)
+        sess.run(model.worker_init)
+        for _ in xrange(num_iterations):
+            sess.run(model.row_update_prep_gramian_op)
+            sess.run(model.initialize_row_update_op)
+            sess.run(row_update_op)
+            sess.run(model.col_update_prep_gramian_op)
+            sess.run(model.initialize_col_update_op)
+            sess.run(col_update_op)
 
-  return sess
+    return sess
+
 
 LOG_RATINGS = 0
 LINEAR_RATINGS = 1
@@ -136,84 +139,83 @@ LINEAR_OBS_W = 100.0
 
 
 def make_wts(data, wt_type, obs_wt, feature_wt_exp, axis):
-  """Generate observed item weights.
+    """Generate observed item weights.
 
-  Args:
-    data:             coo_matrix of ratings data
-    wt_type:          weight type, LOG_RATINGS or LINEAR_RATINGS
-    obs_wt:           linear weight factor
-    feature_wt_exp:   logarithmic weight factor
-    axis:             axis to make weights for, 1=rows/users, 0=cols/items
+    Args:
+      data:             coo_matrix of ratings data
+      wt_type:          weight type, LOG_RATINGS or LINEAR_RATINGS
+      obs_wt:           linear weight factor
+      feature_wt_exp:   logarithmic weight factor
+      axis:             axis to make weights for, 1=rows/users, 0=cols/items
 
-  Returns:
-    vector of weights for cols (items) or rows (users)
-  """
-  # recipricol of sum of number of items across rows (if axis is 0)
-  frac = np.array(1.0/(data > 0.0).sum(axis))
+    Returns:
+      vector of weights for cols (items) or rows (users)
+    """
+    # recipricol of sum of number of items across rows (if axis is 0)
+    frac = np.array(1.0 / (data > 0.0).sum(axis))
 
-  # filter any invalid entries
-  frac[np.ma.masked_invalid(frac).mask] = 0.0
+    # filter any invalid entries
+    frac[np.ma.masked_invalid(frac).mask] = 0.0
 
-  # normalize weights according to assumed distribution of ratings
-  if wt_type == LOG_RATINGS:
-    wts = np.array(np.power(frac, feature_wt_exp)).flatten()
-  else:
-    wts = np.array(obs_wt * frac).flatten()
+    # normalize weights according to assumed distribution of ratings
+    if wt_type == LOG_RATINGS:
+        wts = np.array(np.power(frac, feature_wt_exp)).flatten()
+    else:
+        wts = np.array(obs_wt * frac).flatten()
 
-  # check again for any numerically unstable entries
-  assert np.isfinite(wts).sum() == wts.shape[0]
-  return wts
+    # check again for any numerically unstable entries
+    assert np.isfinite(wts).sum() == wts.shape[0]
+    return wts
 
 
 def wals_model(data, dim, reg, unobs, weights=False,
                wt_type=LINEAR_RATINGS, feature_wt_exp=None,
                obs_wt=LINEAR_OBS_W):
-  """Create the WALSModel and input, row and col factor tensors.
+    """Create the WALSModel and input, row and col factor tensors.
 
-  Args:
-    data:           scipy coo_matrix of item ratings
-    dim:            number of latent factors
-    reg:            regularization constant
-    unobs:          unobserved item weight
-    weights:        True: set obs weights, False: obs weights = unobs weights
-    wt_type:        feature weight type: linear (0) or log (1)
-    feature_wt_exp: feature weight exponent constant
-    obs_wt:         feature weight linear factor constant
+    Args:
+      data:           scipy coo_matrix of item ratings
+      dim:            number of latent factors
+      reg:            regularization constant
+      unobs:          unobserved item weight
+      weights:        True: set obs weights, False: obs weights = unobs weights
+      wt_type:        feature weight type: linear (0) or log (1)
+      feature_wt_exp: feature weight exponent constant
+      obs_wt:         feature weight linear factor constant
 
-  Returns:
-    input_tensor:   tensor holding the input ratings matrix
-    row_factor:     tensor for row_factor
-    col_factor:     tensor for col_factor
-    model:          WALSModel instance
-  """
-  row_wts = None
-  col_wts = None
+    Returns:
+      input_tensor:   tensor holding the input ratings matrix
+      row_factor:     tensor for row_factor
+      col_factor:     tensor for col_factor
+      model:          WALSModel instance
+    """
+    row_wts = None
+    col_wts = None
 
-  num_rows = data.shape[0]
-  num_cols = data.shape[1]
+    num_rows = data.shape[0]
+    num_cols = data.shape[1]
 
-  if weights:
-    assert feature_wt_exp is not None
-    row_wts = np.ones(num_rows)
-    col_wts = make_wts(data, wt_type, obs_wt, feature_wt_exp, 0)
+    if weights:
+        assert feature_wt_exp is not None
+        row_wts = np.ones(num_rows)
+        col_wts = make_wts(data, wt_type, obs_wt, feature_wt_exp, 0)
 
-  row_factor = None
-  col_factor = None
+    row_factor = None
+    col_factor = None
 
-  with tf.Graph().as_default():
+    with tf.Graph().as_default():
+        input_tensor = tf.SparseTensor(indices=zip(data.row, data.col),
+                                       values=(data.data).astype(np.float32),
+                                       dense_shape=data.shape)
 
-    input_tensor = tf.SparseTensor(indices=zip(data.row, data.col),
-                                   values=(data.data).astype(np.float32),
-                                   dense_shape=data.shape)
+        model = factorization_ops.WALSModel(num_rows, num_cols, dim,
+                                            unobserved_weight=unobs,
+                                            regularization=reg,
+                                            row_weights=row_wts,
+                                            col_weights=col_wts)
 
-    model = factorization_ops.WALSModel(num_rows, num_cols, dim,
-                                        unobserved_weight=unobs,
-                                        regularization=reg,
-                                        row_weights=row_wts,
-                                        col_weights=col_wts)
+        # retrieve the row and column factors
+        row_factor = model.row_factors[0]
+        col_factor = model.col_factors[0]
 
-    # retrieve the row and column factors
-    row_factor = model.row_factors[0]
-    col_factor = model.col_factors[0]
-
-  return input_tensor, row_factor, col_factor, model
+    return input_tensor, row_factor, col_factor, model

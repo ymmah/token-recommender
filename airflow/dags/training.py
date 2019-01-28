@@ -24,17 +24,19 @@ from airflow.operators.ml_engine_plugin import MLEngineTrainingOperator
 
 import datetime
 
-def _get_project_id():
-  """Get project ID from default GCP connection."""
 
-  extras = BaseHook.get_connection('google_cloud_default').extra_dejson
-  key = 'extra__google_cloud_platform__project'
-  if key in extras:
-    project_id = extras[key]
-  else:
-    raise ('Must configure project_id in google_cloud_default '
-           'connection from Airflow Console')
-  return project_id
+def _get_project_id():
+    """Get project ID from default GCP connection."""
+
+    extras = BaseHook.get_connection('google_cloud_default').extra_dejson
+    key = 'extra__google_cloud_platform__project'
+    if key in extras:
+        project_id = extras[key]
+    else:
+        raise ('Must configure project_id in google_cloud_default '
+               'connection from Airflow Console')
+    return project_id
+
 
 PROJECT_ID = _get_project_id()
 
@@ -73,7 +75,6 @@ dag = DAG('recommendations_training_v1', default_args=default_args,
 
 dag.doc_md = __doc__
 
-
 #
 #
 # Task Definition
@@ -82,7 +83,7 @@ dag.doc_md = __doc__
 
 # BigQuery training data query
 
-bql='''
+bql = '''
 #standardSQL
 with top_tokens as (
   select token_address, count(1) as transfer_count
@@ -140,7 +141,6 @@ t2 = BigQueryToCloudStorageOperator(
     dag=dag
 )
 
-
 # ML Engine training job
 
 job_id = 'recserve_{0}'.format(datetime.datetime.now().strftime('%Y%m%d%H%M'))
@@ -178,4 +178,3 @@ t4 = AppEngineVersionOperator(
 t2.set_upstream(t1)
 t3.set_upstream(t2)
 t4.set_upstream(t3)
-
