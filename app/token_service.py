@@ -25,7 +25,7 @@ class TokenService(object):
         client = storage.Client()
         bucket = client.get_bucket(self._bucket)
 
-        logging.info('Downloading blobsf for TokenService.')
+        logging.info('Downloading blobs for TokenService.')
 
         blob = bucket.blob(TOKENS_FILE)
         with open(os.path.join(local_model_path, TOKENS_FILE), 'wb') as file_obj:

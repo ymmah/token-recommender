@@ -1,0 +1,12 @@
+token_address,user_address,rating
+t0,u0,1
+t1,u0,2
+t2,u0,2
+t0,u1,3
+t3,u1,4
+t4,u1,4
+t0,u2,5
+t3,u2,4
+t4,u2,4
+t5,u2,4
+t6,u2,4

@@ -144,10 +144,9 @@ def _create_sparse_train_and_test(ratings, n_users, n_items):
        train, test sparse matrices in scipy coo_matrix format.
     """
     # pick a random test set of entries, sorted ascending
-    test_set_size = len(ratings) / TEST_SET_RATIO
+    test_set_size = len(ratings) // TEST_SET_RATIO
     np.random.seed(42)
-    test_set_idx = np.random.choice(xrange(len(ratings)),
-                                    size=test_set_size, replace=False)
+    test_set_idx = np.random.choice(range(len(ratings)), size=test_set_size, replace=False)
     test_set_idx = sorted(test_set_idx)
 
     # sift ratings into train and test sets
@@ -240,44 +239,14 @@ def save_model(args, user_map, item_map, row_factor, col_factor):
         sh.gsutil('cp', '-r', os.path.join(model_dir, '*'), gs_model_dir)
 
 
-def generate_recommendations(user_idx, user_rated, row_factor, col_factor, k):
-    """Generate recommendations for a user.
-
-    Args:
-      user_idx: the row index of the user in the ratings matrix,
-
-      user_rated: the list of item indexes (column indexes in the ratings matrix)
-        previously rated by that user (which will be excluded from the
-        recommendations)
-
-      row_factor: the row factors of the recommendation model
-      col_factor: the column factors of the recommendation model
-
-      k: number of recommendations requested
-
-    Returns:
-      list of k item indexes with the predicted highest rating, excluding
-      those that the user has already rated
-    """
-
-    # bounds checking for args
-    assert (col_factor.shape[0] - len(user_rated)) >= k
-
-    # retrieve user factor
-    user_f = row_factor[user_idx]
-
-    # dot product of item factors with user factor gives predicted ratings
-    pred_ratings = col_factor.dot(user_f)
-
-    # find candidate recommended item indexes sorted by predicted rating
+def generate_recommendations(user_idx, user_rated, model, k, item_count):
     k_r = k + len(user_rated)
-    candidate_items = np.argsort(pred_ratings)[-k_r:]
+    scores = model.predict(user_idx, np.arange(item_count))
+    top_items = np.argsort(-scores)
+    candidate_items = top_items[:k_r]
 
     # remove previously rated items and take top k
     recommended_items = [i for i in candidate_items if i not in user_rated]
-    recommended_items = recommended_items[-k:]
-
-    # flip to sort highest rated first
-    recommended_items.reverse()
+    recommended_items = recommended_items[:k]
 
     return recommended_items

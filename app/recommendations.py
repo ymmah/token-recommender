@@ -15,6 +15,8 @@
 """Recommendation generation module."""
 
 import logging
+import pickle
+
 import numpy as np
 import os
 import pandas as pd
@@ -28,11 +30,10 @@ logging.basicConfig(level=logging.INFO)
 
 LOCAL_MODEL_PATH = '/tmp'
 
-ROW_MODEL_FILE = 'model/row.npy'
-COL_MODEL_FILE = 'model/col.npy'
+MODEL_FILE = 'model/model.pickle'
 USER_MODEL_FILE = 'model/user.npy'
 ITEM_MODEL_FILE = 'model/item.npy'
-USER_TOKEN_DATA_FILE = 'data/token_balances.csv'
+USER_TOKEN_DATA_FILE = 'data/token_balances_usd_2_tokens.csv'
 
 
 class Recommendations(object):
@@ -62,7 +63,7 @@ class Recommendations(object):
 
         logging.info('Downloading blobs.')
 
-        model_files = [ROW_MODEL_FILE, COL_MODEL_FILE, USER_MODEL_FILE,
+        model_files = [MODEL_FILE, USER_MODEL_FILE,
                        ITEM_MODEL_FILE, USER_TOKEN_DATA_FILE]
         for model_file in model_files:
             blob = bucket.blob(model_file)
@@ -72,8 +73,7 @@ class Recommendations(object):
         logging.info('Finished downloading blobs.')
 
         # load npy arrays for user/item factors and user/item maps
-        self.user_factor = np.load(os.path.join(local_model_path, ROW_MODEL_FILE))
-        self.item_factor = np.load(os.path.join(local_model_path, COL_MODEL_FILE))
+        self.model = pickle.load(open(os.path.join(local_model_path, MODEL_FILE), 'rb'))
         self.user_map = np.load(os.path.join(local_model_path, USER_MODEL_FILE))
         self.item_map = np.load(os.path.join(local_model_path, ITEM_MODEL_FILE))
 
@@ -115,9 +115,9 @@ class Recommendations(object):
 
             # generate list of recommended article indexes from model
             index_and_rating_list = generate_recommendations(user_idx, already_rated_idx,
-                                                             self.user_factor,
-                                                             self.item_factor,
-                                                             num_recs)
+                                                             self.model,
+                                                             num_recs,
+                                                             len(self.item_map))
 
             # map article indexes back to article ids
             token_address_and_rating_list = [(self.item_map[i], rating) for i, rating in index_and_rating_list]
@@ -141,47 +141,14 @@ class Recommendations(object):
         return result
 
 
-def generate_recommendations(user_idx, user_rated, row_factor, col_factor, k):
-    """Generate recommendations for a user.
-
-    Args:
-      user_idx: the row index of the user in the ratings matrix,
-
-      user_rated: the list of item indexes (column indexes in the ratings matrix)
-        previously rated by that user (which will be excluded from the
-        recommendations),
-
-      row_factor: the row factors of the recommendation model
-
-      col_factor: the column factors of the recommendation model
-
-      k: number of recommendations requested
-
-    Returns:
-      list of k item indexes with the predicted highest rating,
-      excluding those that the user has already rated
-    """
-
-    # bounds checking for args
-    assert (row_factor.shape[0] - len(user_rated)) >= k
-
-    # retrieve user factor
-    user_f = row_factor[user_idx]
-
-    # dot product of item factors with user factor gives predicted ratings
-    pred_ratings = col_factor.dot(user_f)
-
-    # find candidate recommended item indexes sorted by predicted rating
+def generate_recommendations(user_idx, user_rated, model, k, item_count):
     k_r = k + len(user_rated)
-    candidate_items = np.argsort(pred_ratings)[-k_r:]
+    scores = model.predict(user_idx, np.arange(item_count))
+    top_items = np.argsort(-scores)
+    candidate_items = top_items[:k_r]
 
     # remove previously rated items and take top k
-    recommended_items = [i for i in candidate_items if i not in user_rated]
-    recommended_items = recommended_items[-k:]
-
-    recommended_items = [(i, float(pred_ratings[i])) for i in recommended_items]
-
-    # flip to sort highest rated first
-    recommended_items.reverse()
+    recommended_items = [(i, float(scores[i])) for i in candidate_items if i not in user_rated]
+    recommended_items = recommended_items[:k]
 
     return recommended_items

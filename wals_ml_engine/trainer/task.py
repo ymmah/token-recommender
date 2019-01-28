@@ -23,7 +23,8 @@ import scipy.sparse as sp
 import tensorflow as tf
 from lightfm import LightFM
 from lightfm.evaluation import precision_at_k, recall_at_k
-from pandas import Series
+from pandas import Series, np
+from tqdm import tqdm
 
 import model
 import util
@@ -79,11 +80,13 @@ def train_and_evaluate_lightfm(args):
     lfm.fit(train, epochs=20, num_threads=2)
 
     job_dir = args['job_dir']
+    print("Saving model to {} ...".format(job_dir))
     if not os.path.exists(job_dir):
         os.makedirs(job_dir)
-    print("Saving model to {} ...").format(job_dir)
-    with open(os.path.join(job_dir, 'model.pickle'), 'w') as output_file:
+    with open(os.path.join(job_dir, 'model.pickle'), 'wb') as output_file:
         output_file.write(pickle.dumps(lfm))
+    np.save(os.path.join(job_dir, 'user'), users)
+    np.save(os.path.join(job_dir, 'item'), items)
 
     print("Evaluating model ...")
     test_precision = precision_at_k(lfm, test, train, k=k).mean()
@@ -96,10 +99,11 @@ def train_and_evaluate_lightfm(args):
     train_recall = recall_at_k(lfm, train, k=k).mean()
     print("train recall@%d: %.2f%%" % (k, train_recall * 100.0))
 
-    pop_precision = precision_at_k(popularity_model(k=k), test, train, k=k).mean()
-    print("popularity precision@%d: %.2f%%" % (k, pop_precision * 100.0))
-    pop_recall = recall_at_k(popularity_model(k=k), test, train, k=k).mean()
-    print("popularity recall@%d: %.2f%%" % (k, pop_recall * 100.0))
+    if args.get('eval_popularity') == 'True':
+        pop_precision = precision_at_k(popularity_model(k=k), test, train, k=k).mean()
+        print("popularity precision@%d: %.2f%%" % (k, pop_precision * 100.0))
+        pop_recall = recall_at_k(popularity_model(k=k), test, train, k=k).mean()
+        print("popularity recall@%d: %.2f%%" % (k, pop_recall * 100.0))
 
 
 def popularity_model(k=10):
@@ -114,7 +118,7 @@ def popularity_model(k=10):
             data = []
             rows = []
             cols = []
-            for user in range(0, num_users):
+            for user in tqdm(range(0, num_users)):
                 test_items = set(test_interactions.getrow(user).indices)
                 train_items = set(train_interactions.getrow(user).indices)
                 recommended_items = [item for item in most_popular if item not in train_items]
@@ -243,7 +247,7 @@ def parse_arguments():
 
     # update default params with any args provided to task
     params = model.DEFAULT_PARAMS
-    params.update({k: arg for k, arg in arguments.iteritems() if arg is not None})
+    params.update({k: arg for k, arg in arguments.items() if arg is not None})
     if args.use_optimized:
         params.update(model.OPTIMIZED_PARAMS)
 
