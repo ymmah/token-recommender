@@ -16,10 +16,12 @@
 import json
 
 from flask import Flask, request
+from flask_cors import CORS, cross_origin
 
 from recommendations import Recommendations
 
 app = Flask(__name__)
+cors = CORS(app)
 
 rec_util = Recommendations()
 
@@ -27,6 +29,7 @@ DEFAULT_RECS = 5
 
 
 @app.route('/recommendation', methods=['GET'])
+@cross_origin()
 def recommendation():
     """Given a user id, return a list of recommended item ids."""
     user_address = request.args.get('user_address')
