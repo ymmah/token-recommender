@@ -17,9 +17,12 @@
 import argparse
 import json
 import os
+
+import scipy.sparse as sp
 import tensorflow as tf
 from lightfm import LightFM
 from lightfm.evaluation import precision_at_k, recall_at_k
+from pandas import Series
 
 import model
 import util
@@ -85,6 +88,36 @@ def train_and_evaluate_lightfm(args):
     train_recall = recall_at_k(lfm, train, k=k).mean()
     print("train recall@%d: %.2f%%" % (k, train_recall * 100.0))
 
+    pop_precision = precision_at_k(popularity_model(k=k), test, train, k=k).mean()
+    print("popularity precision@%d: %.2f%%" % (k, pop_precision * 100.0))
+
+
+def popularity_model(k=10):
+    def get_most_popular(sparse):
+        """Get the k most popular items in sparse based on number of ratings."""
+        return list(Series(sparse.nonzero()[1]).value_counts()[:k].index)
+
+    class PopularityModel:
+        def predict_rank(self, test_interactions, train_interactions, **kwargs):
+            most_popular = get_most_popular(test_interactions)
+            num_users = test_interactions.shape[0]
+            data = []
+            rows = []
+            cols = []
+            for item_rank, item in enumerate(most_popular):
+                # TODO: Skip already rated items in train_interactions
+                for user in range(0, num_users):
+                    has_rating = len(test_interactions.getrow(user).getcol(item).data) >= 1
+                    if has_rating:
+                        data.append(float(item_rank))
+                        rows.append(user)
+                        cols.append(item)
+
+            ranks = sp.csr_matrix((data, (rows, cols)), shape=test_interactions.shape)
+
+            return ranks
+
+    return PopularityModel()
 
 def parse_arguments():
     """Parse job arguments."""
