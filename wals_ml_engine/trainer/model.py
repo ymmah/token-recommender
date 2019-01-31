@@ -14,73 +14,32 @@
 
 """WALS model input data, training and predict functions."""
 
-import datetime
-import numpy as np
 import os
-import pandas as pd
-from scipy.sparse import coo_matrix
-import sh
-import tensorflow as tf
+import pickle
 
-import wals
+import numpy as np
+import pandas as pd
+import sh
+from lightfm import LightFM
+from lightfm.evaluation import precision_at_k, recall_at_k
+from pandas import Series
+from scipy.sparse import coo_matrix
+from tqdm import tqdm
 
 # ratio of train set size to test set size
 TEST_SET_RATIO = 10
 
-# default hyperparameters
-DEFAULT_PARAMS = {
-    'weights': True,
-    'latent_factors': 5,
-    'num_iters': 20,
-    'regularization': 0.07,
-    'unobs_weight': 0.01,
-    'wt_type': 0,
-    'feature_wt_factor': 130.0,
-    'feature_wt_exp': 0.08
-}
-
 # parameters optimized with hypertuning
 OPTIMIZED_PARAMS = {
-    'latent_factors': 10,
-    'regularization': 0.33,
-    'unobs_weight': 0.001,
-    'feature_wt_exp': 3.93,
+    'num_iters': 20
 }
 
 
 def create_test_and_train_sets(input_file):
-    """Create test and train sets.
-
-    Args:
-      input_file: path to csv data file
-
-    Returns:
-      array of user addresses for each row of the ratings matrix
-      array of token addresses for each column of the rating matrix
-      sparse coo_matrix for training
-      sparse coo_matrix for test
-
-    Raises:
-      ValueError: if invalid data type is supplied
-    """
-
     return _token_balances_train_and_test(input_file)
 
 
 def _token_balances_train_and_test(input_file):
-    """Load token_balances dataset, and create train and set sparse matrices.
-
-    Assumes 'token_address', 'user_address', and 'rating' columns.
-
-    Args:
-      input_file: path to csv data file
-
-    Returns:
-      array of user addresses for each row of the ratings matrix
-      array of token addresses for each column of the rating matrix
-      sparse coo_matrix for training
-      sparse coo_matrix for test
-    """
     headers = ['token_address', 'user_address', 'rating']
     balances_df = pd.read_csv(input_file,
                               sep=',',
@@ -133,21 +92,10 @@ def _token_balances_train_and_test(input_file):
 
 
 def _create_sparse_train_and_test(ratings, n_users, n_items):
-    """Given ratings, create sparse matrices for train and test sets.
-
-    Args:
-      ratings:  list of ratings tuples  (u, i, r)
-      n_users:  number of users
-      n_items:  number of items
-
-    Returns:
-       train, test sparse matrices in scipy coo_matrix format.
-    """
     # pick a random test set of entries, sorted ascending
-    test_set_size = len(ratings) / TEST_SET_RATIO
+    test_set_size = len(ratings) // TEST_SET_RATIO
     np.random.seed(42)
-    test_set_idx = np.random.choice(xrange(len(ratings)),
-                                    size=test_set_size, replace=False)
+    test_set_idx = np.random.choice(range(len(ratings)), size=test_set_size, replace=False)
     test_set_idx = sorted(test_set_idx)
 
     # sift ratings into train and test sets
@@ -164,63 +112,14 @@ def _create_sparse_train_and_test(ratings, n_users, n_items):
     return tr_sparse, test_sparse
 
 
-def train_model(args, tr_sparse):
-    """Instantiate WALS model and use "simple_train" to factorize the matrix.
-
-    Args:
-      args: training args containing hyperparams
-      tr_sparse: sparse training matrix
-
-    Returns:
-       the row and column factors in numpy format.
-    """
-    dim = args['latent_factors']
-    num_iters = args['num_iters']
-    reg = args['regularization']
-    unobs = args['unobs_weight']
-    wt_type = args['wt_type']
-    feature_wt_exp = args['feature_wt_exp']
-    obs_wt = args['feature_wt_factor']
-
-    tf.logging.info('Train Start: {:%Y-%m-%d %H:%M:%S}'.format(datetime.datetime.now()))
-
-    # generate model
-    input_tensor, row_factor, col_factor, model = wals.wals_model(tr_sparse,
-                                                                  dim,
-                                                                  reg,
-                                                                  unobs,
-                                                                  args['weights'],
-                                                                  wt_type,
-                                                                  feature_wt_exp,
-                                                                  obs_wt)
-
-    # factorize matrix
-    session = wals.simple_train(model, input_tensor, num_iters)
-
-    tf.logging.info('Train Finish: {:%Y-%m-%d %H:%M:%S}'.format(datetime.datetime.now()))
-
-    # evaluate output factor matrices
-    output_row = row_factor.eval(session=session)
-    output_col = col_factor.eval(session=session)
-
-    # close the training session now that we've evaluated the output
-    session.close()
-
-    return output_row, output_col
+def train_model(args, train):
+    no_components = 11
+    model = LightFM(loss='warp', no_components=no_components, learning_schedule='adagrad')
+    model.fit(train, epochs=args['num_iters'], num_threads=2)
+    return model
 
 
-def save_model(args, user_map, item_map, row_factor, col_factor):
-    """Save the user map, item map, row factor and column factor matrices in numpy format.
-
-    These matrices together constitute the "recommendation model."
-
-    Args:
-      args:         input args to training job
-      user_map:     user map numpy array
-      item_map:     item map numpy array
-      row_factor:   row_factor numpy array
-      col_factor:   col_factor numpy array
-    """
+def save_model(args, model, users, items):
     model_dir = os.path.join(args['output_dir'], 'model')
 
     # if our output directory is a GCS bucket, write model files to /tmp,
@@ -231,53 +130,76 @@ def save_model(args, user_map, item_map, row_factor, col_factor):
         model_dir = '/tmp/{0}'.format(args['job_name'])
 
     os.makedirs(model_dir)
-    np.save(os.path.join(model_dir, 'user'), user_map)
-    np.save(os.path.join(model_dir, 'item'), item_map)
-    np.save(os.path.join(model_dir, 'row'), row_factor)
-    np.save(os.path.join(model_dir, 'col'), col_factor)
+    with open(os.path.join(model_dir, 'model.pickle'), 'wb') as output_file:
+        output_file.write(pickle.dumps(model))
+    np.save(os.path.join(model_dir, 'user'), users)
+    np.save(os.path.join(model_dir, 'item'), items)
 
     if gs_model_dir:
         sh.gsutil('cp', '-r', os.path.join(model_dir, '*'), gs_model_dir)
 
 
-def generate_recommendations(user_idx, user_rated, row_factor, col_factor, k):
-    """Generate recommendations for a user.
+def evaluate_model(args, mdl, train, test):
+    k = 5
+    test_precision = precision_at_k(mdl, test, train, k=k).mean()
+    print("test precision@%d: %.2f%%" % (k, test_precision * 100.0))
+    test_recall = recall_at_k(mdl, test, train, k=k).mean()
+    print("test recall@%d: %.2f%%" % (k, test_recall * 100.0))
 
-    Args:
-      user_idx: the row index of the user in the ratings matrix,
+    train_precision = precision_at_k(mdl, train, k=k).mean()
+    print("train precision@%d: %.2f%%" % (k, train_precision * 100.0))
+    train_recall = recall_at_k(mdl, train, k=k).mean()
+    print("train recall@%d: %.2f%%" % (k, train_recall * 100.0))
 
-      user_rated: the list of item indexes (column indexes in the ratings matrix)
-        previously rated by that user (which will be excluded from the
-        recommendations)
+    if args.get('eval_popularity') == 'True':
+        pop_precision = precision_at_k(popularity_model(k=k), test, train, k=k).mean()
+        print("popularity precision@%d: %.2f%%" % (k, pop_precision * 100.0))
+        pop_recall = recall_at_k(popularity_model(k=k), test, train, k=k).mean()
+        print("popularity recall@%d: %.2f%%" % (k, pop_recall * 100.0))
 
-      row_factor: the row factors of the recommendation model
-      col_factor: the column factors of the recommendation model
 
-      k: number of recommendations requested
+def popularity_model(k=10):
+    def get_most_popular(sparse):
+        """Get the k most popular items in sparse based on number of ratings."""
+        return list(Series(sparse.nonzero()[1]).value_counts()[:(k * 10)].index)
 
-    Returns:
-      list of k item indexes with the predicted highest rating, excluding
-      those that the user has already rated
-    """
+    class PopularityModel:
+        def predict_rank(self, test_interactions, train_interactions, **kwargs):
+            most_popular = get_most_popular(test_interactions)
+            num_users = test_interactions.shape[0]
+            data = []
+            rows = []
+            cols = []
+            for user in tqdm(range(0, num_users)):
+                test_items = set(test_interactions.getrow(user).indices)
+                train_items = set(train_interactions.getrow(user).indices)
+                recommended_items = [item for item in most_popular if item not in train_items]
+                predictions = set(recommended_items).intersection(test_items)
 
-    # bounds checking for args
-    assert (col_factor.shape[0] - len(user_rated)) >= k
+                recommended_ranks = {item: index for index, item in enumerate(recommended_items)}
 
-    # retrieve user factor
-    user_f = row_factor[user_idx]
+                for prediction in predictions:
+                    rank = recommended_ranks.get(prediction)
+                    if rank is not None and rank < k:
+                        data.append(float(rank))
+                        rows.append(user)
+                        cols.append(prediction)
 
-    # dot product of item factors with user factor gives predicted ratings
-    pred_ratings = col_factor.dot(user_f)
+            ranks = sp.csr_matrix((data, (rows, cols)), shape=test_interactions.shape)
 
-    # find candidate recommended item indexes sorted by predicted rating
+            return ranks
+
+    return PopularityModel()
+
+
+def generate_recommendations(user_idx, user_rated, model, k, item_count):
     k_r = k + len(user_rated)
-    candidate_items = np.argsort(pred_ratings)[-k_r:]
+    scores = model.predict(user_idx, np.arange(item_count))
+    top_items = np.argsort(-scores)
+    candidate_items = top_items[:k_r]
 
     # remove previously rated items and take top k
     recommended_items = [i for i in candidate_items if i not in user_rated]
-    recommended_items = recommended_items[-k:]
-
-    # flip to sort highest rated first
-    recommended_items.reverse()
+    recommended_items = recommended_items[:k]
 
     return recommended_items
