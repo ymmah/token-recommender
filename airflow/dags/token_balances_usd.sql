@@ -1,7 +1,7 @@
 #standardSQL
 with tokens as (
   select *
-  from `crypto-etl-ethereum-dev.token_recommender.tokens` as tokens
+  from token_recommender.tokens as tokens
   where true
     and tokens.symbol is not null
     and tokens.price is not null and tokens.price > 0
@@ -43,4 +43,4 @@ select
     balance as rating
 from filtered_token_balances_usd
 where true
-  -- and token_count >= 2
+    and token_count >= 2

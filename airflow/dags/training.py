@@ -19,6 +19,7 @@ from airflow import DAG
 from airflow.contrib.operators.bigquery_operator import BigQueryOperator
 from airflow.contrib.operators.bigquery_to_gcs import BigQueryToCloudStorageOperator
 from airflow.hooks.base_hook import BaseHook
+from airflow.models import Variable
 from airflow.operators.app_engine_admin_plugin import AppEngineVersionOperator
 from airflow.operators.ml_engine_plugin import MLEngineTrainingOperator
 
@@ -40,57 +41,46 @@ def _get_project_id():
 
 PROJECT_ID = _get_project_id()
 
-# Data set constants, used in BigQuery tasks.  You can change these
-# to conform to your data.
-DATASET = 'GA360_test'
-TABLE_NAME = 'ga_sessions_sample'
-ARTICLE_CUSTOM_DIMENSION = '10'
-
 # GCS bucket names and region, can also be changed.
 BUCKET = 'gs://recserve_' + PROJECT_ID
-REGION = 'us-east1'
+REGION = 'us-central1'
 
 # The code package name comes from the model code in the wals_ml_engine
 # directory of the solution code base.
-PACKAGE_URI = BUCKET + '/code/wals_ml_engine-0.1.tar.gz'
+PACKAGE_URI = BUCKET + '/code/ml_engine-0.1.tar.gz'
 JOB_DIR = BUCKET + '/jobs'
 
+print(airflow.version)
+
 default_args = {
-    'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': airflow.utils.dates.days_ago(2),
-    'email': ['airflow@example.com'],
+    'start_date': datetime.datetime(2018, 7, 1),
+    'email': [Variable.get('notifications_email', 'airflow@example.com')],
     'email_on_failure': True,
     'email_on_retry': False,
     'retries': 5,
     'retry_delay': datetime.timedelta(minutes=5)
 }
 
-# Default schedule interval using cronjob syntax - can be customized here
-# or in the Airflow console.
-schedule_interval = '00 21 * * *'
-
-dag = DAG('recommendations_training_v1', default_args=default_args,
-          schedule_interval=schedule_interval)
-
-dag.doc_md = __doc__
-
-#
-#
-# Task Definition
-#
-#
+dag = DAG(
+    'recommendations_training_v1',
+    catchup=False,
+    default_args=default_args,
+    schedule_interval='0 0 * * *')
 
 # BigQuery training data query
 
 bql = '''
 #standardSQL
-with top_tokens as (
-  select token_address, count(1) as transfer_count
-  from `bigquery-public-data.ethereum_blockchain.token_transfers` as token_transfers
-  group by token_address
-  order by transfer_count desc
-  limit 1000
+#standardSQL
+with tokens as (
+  select *
+  from token_recommender.tokens as tokens
+  where true
+    and tokens.symbol is not null
+    and tokens.price is not null and tokens.price > 0
+    and tokens.eth_address is not null
+    and tokens.decimals is not null and tokens.decimals >= 0
 ),
 token_balances as (
     with double_entry_book as (
@@ -102,40 +92,47 @@ token_balances as (
     )
     select double_entry_book.token_address, address, sum(value) as balance
     from double_entry_book
-    join top_tokens on top_tokens.token_address = double_entry_book.token_address
+    join tokens on tokens.eth_address = double_entry_book.token_address
     where address != '0x0000000000000000000000000000000000000000'
     group by token_address, address
     having balance > 0
 ),
-token_supplies as (
-    select token_address, sum(balance) as supply
+token_balances_usd as (
+    select
+        token_address,
+        address,
+        balance / pow(10, decimals) * price as balance
     from token_balances
-    group by token_address
+    join tokens on tokens.eth_address = token_balances.token_address
+),
+filtered_token_balances_usd as (
+    select *,
+        count(1) over (partition by address) as token_count
+    from token_balances_usd
+    where balance >= 20
 )
-select 
-    token_balances.token_address, 
-    token_balances.address as user_address, 
-    balance/supply * 100 as rating
-from token_balances
-join token_supplies on token_supplies.token_address = token_balances.token_address
-where balance/supply * 100 > 0.001
+select
+    token_address,
+    address as user_address,
+    balance as rating
+from filtered_token_balances_usd
+where true
+    and token_count >= 2
 '''
 
-bql = bql.format(ARTICLE_CUSTOM_DIMENSION, PROJECT_ID, DATASET, TABLE_NAME)
-
 t1 = BigQueryOperator(
-    task_id='bq_rec_training_data',
+    task_id='query_training_data',
     bql=bql,
-    destination_dataset_table='%s.recommendation_events' % DATASET,
+    destination_dataset_table='token_recommender.token_balances',
     write_disposition='WRITE_TRUNCATE',
     dag=dag)
 
 # BigQuery training data export to GCS
 
-training_file = BUCKET + '/data/recommendation_events.csv'
+training_file = BUCKET + '/data/token_balances.csv'
 t2 = BigQueryToCloudStorageOperator(
-    task_id='bq_export_op',
-    source_project_dataset_table='%s.recommendation_events' % DATASET,
+    task_id='export_training_data',
+    source_project_dataset_table='token_recommender.token_balances',
     destination_cloud_storage_uris=[training_file],
     export_format='CSV',
     dag=dag
@@ -148,11 +145,10 @@ job_dir = BUCKET + '/jobs/' + job_id
 output_dir = BUCKET
 training_args = ['--job-dir', job_dir,
                  '--train-files', training_file,
-                 '--output-dir', output_dir,
-                 '--use-optimized']
+                 '--output-dir', output_dir]
 
 t3 = MLEngineTrainingOperator(
-    task_id='ml_engine_training_op',
+    task_id='train_model_ml_engine',
     project_id=PROJECT_ID,
     job_id=job_id,
     package_uris=[PACKAGE_URI],
@@ -167,7 +163,7 @@ t3 = MLEngineTrainingOperator(
 # App Engine deploy new version
 
 t4 = AppEngineVersionOperator(
-    task_id='app_engine_deploy_version',
+    task_id='deploy_app_engine_version',
     project_id=PROJECT_ID,
     service_id='default',
     region=REGION,
