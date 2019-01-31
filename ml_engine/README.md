@@ -65,5 +65,12 @@ $ ./mltrain.sh tune gs://mybucket/data/u.data
 
 ```
 
+* Deploying distribution package:
+
+```bash
+python setup.py sdist
+export BUCKET=gs://recserve_$(gcloud config get-value project 2> /dev/null)
+gsutil cp dist/ml_engine-0.1.tar.gz ${BUCKET}/code/
+```
 
 

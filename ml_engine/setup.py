@@ -15,7 +15,7 @@
 from setuptools import find_packages
 from setuptools import setup
 
-REQUIRED_PACKAGES = ['sh']
+REQUIRED_PACKAGES = ['sh', 'tqdm', 'lightfm']
 
 setup(
     name='ml_engine',

@@ -18,12 +18,13 @@ import airflow
 from airflow import DAG
 from airflow.contrib.operators.bigquery_operator import BigQueryOperator
 from airflow.contrib.operators.bigquery_to_gcs import BigQueryToCloudStorageOperator
+from airflow.contrib.operators.mlengine_operator import MLEngineTrainingOperator
 from airflow.hooks.base_hook import BaseHook
 from airflow.models import Variable
-from airflow.operators.app_engine_admin_plugin import AppEngineVersionOperator
-from airflow.operators.ml_engine_plugin import MLEngineTrainingOperator
 
 import datetime
+
+from airflow.operators.bash_operator import BashOperator
 
 
 def _get_project_id():
@@ -62,16 +63,15 @@ default_args = {
     'retry_delay': datetime.timedelta(minutes=5)
 }
 
-dag = DAG(
-    'recommendations_training_v1',
+dag_train_model = DAG(
+    'train_model',
     catchup=False,
     default_args=default_args,
     schedule_interval='0 0 * * *')
 
 # BigQuery training data query
 
-bql = '''
-#standardSQL
+sql = '''
 #standardSQL
 with tokens as (
   select *
@@ -122,10 +122,11 @@ where true
 
 t1 = BigQueryOperator(
     task_id='query_training_data',
-    bql=bql,
+    sql=sql,
+    use_legacy_sql=False,
     destination_dataset_table='token_recommender.token_balances',
     write_disposition='WRITE_TRUNCATE',
-    dag=dag)
+    dag=dag_train_model)
 
 # BigQuery training data export to GCS
 
@@ -135,7 +136,7 @@ t2 = BigQueryToCloudStorageOperator(
     source_project_dataset_table='token_recommender.token_balances',
     destination_cloud_storage_uris=[training_file],
     export_format='CSV',
-    dag=dag
+    dag=dag_train_model
 )
 
 # ML Engine training job
@@ -155,22 +156,21 @@ t3 = MLEngineTrainingOperator(
     training_python_module='trainer.task',
     training_args=training_args,
     region=REGION,
-    scale_tier='CUSTOM',
-    master_type='complex_model_m_gpu',
-    dag=dag
+    scale_tier='BASIC',
+    dag=dag_train_model
 )
 
+# Adding t4 as downstream to t3 breaks the dag for some freaking unknown reason, so have to separate DAGs
+dag_deploy_app_engine = DAG(
+    'deploy_app_engine',
+    catchup=False,
+    default_args=default_args,
+    schedule_interval='0 1 * * *')
 # App Engine deploy new version
 
-t4 = AppEngineVersionOperator(
+t4 = BashOperator(
     task_id='deploy_app_engine_version',
-    project_id=PROJECT_ID,
-    service_id='default',
-    region=REGION,
-    service_spec=None,
-    dag=dag
+    bash_command='cd /home/airflow/gcs/dags/app && gcloud -q app deploy app_template.yaml_deploy.yaml',
+    depends_on_past=False,
+    dag=dag_deploy_app_engine
 )
-
-t2.set_upstream(t1)
-t3.set_upstream(t2)
-t4.set_upstream(t3)

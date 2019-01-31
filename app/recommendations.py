@@ -33,7 +33,7 @@ LOCAL_MODEL_PATH = '/tmp'
 MODEL_FILE = 'model/model.pickle'
 USER_MODEL_FILE = 'model/user.npy'
 ITEM_MODEL_FILE = 'model/item.npy'
-USER_TOKEN_DATA_FILE = 'data/token_balances_usd_2_tokens.csv'
+USER_TOKEN_DATA_FILE = 'data/token_balances.csv'
 
 
 class Recommendations(object):
