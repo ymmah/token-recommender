@@ -155,10 +155,16 @@ t3 = MLEngineTrainingOperator(
     package_uris=[PACKAGE_URI],
     training_python_module='trainer.task',
     training_args=training_args,
+    python_version='3.5',
+    runtime_version='1.4',
     region=REGION,
     scale_tier='BASIC',
     dag=dag_train_model
 )
+
+
+t2.set_upstream(t1)
+t3.set_upstream(t2)
 
 # Adding t4 as downstream to t3 breaks the dag for some freaking unknown reason, so have to separate DAGs
 dag_deploy_app_engine = DAG(

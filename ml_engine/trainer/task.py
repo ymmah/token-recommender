@@ -20,8 +20,8 @@ import os
 
 import tensorflow as tf
 
-import model
-import util
+import trainer.model as model
+import trainer.util as util
 
 
 def train_and_evaluate_lightfm(args):

@@ -129,9 +129,10 @@ def save_model(args, model, users, items):
         gs_model_dir = model_dir
         model_dir = '/tmp/{0}'.format(args['job_name'])
 
-    os.makedirs(model_dir)
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
     with open(os.path.join(model_dir, 'model.pickle'), 'wb') as output_file:
-        output_file.write(pickle.dumps(model))
+        pickle.dump(model, output_file)
     np.save(os.path.join(model_dir, 'user'), users)
     np.save(os.path.join(model_dir, 'item'), items)
 
