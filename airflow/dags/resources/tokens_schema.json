@@ -1,0 +1,22 @@
+[
+    {
+        "name": "price",
+        "type": "FLOAT"
+    },
+    {
+        "name": "eth_address",
+        "type": "STRING"
+    },
+    {
+        "name": "decimals",
+        "type": "INTEGER"
+    },
+    {
+        "name": "symbol",
+        "type": "STRING"
+    },
+    {
+        "name": "name",
+        "type": "STRING"
+    }
+]

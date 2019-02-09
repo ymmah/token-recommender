@@ -69,6 +69,35 @@ dag_train_model = DAG(
     default_args=default_args,
     schedule_interval='0 0 * * *')
 
+install_python2_command = \
+        'cp /home/airflow/gcs/dags/resources/miniconda2.tar . && ' \
+        'tar xvf miniconda2.tar > untar_miniconda.log && ' \
+        'MINICONDA2=$PWD/miniconda2 && ' \
+        'PYTHON2=$PWD/miniconda2/bin/python'
+
+setup_command = \
+        'set -o xtrace && set -o pipefail && ' + install_python2_command + \
+        ' && ' \
+        'git clone --branch master http://github.com/blockchain-etl/ethereum-scraper && ' \
+        'cd ethereum-scraper/ethscraper && ' \
+        'export CLOUDSDK_PYTHON=/usr/local/bin/python3'
+
+crawl_tokens_command = \
+        setup_command + ' && ' + \
+        '$PYTHON2 $MINICONDA2/lib/python2.7/site-packages/scrapy/cmdline.py runspider spiders/etherscan_token_spider.py -o tokens.csv && ' \
+        'if [[ $(wc -l <tokens.csv) -le 500 ]]; then echo "tokens.csv file has less than 500 lines" && exit 1; else echo "tokens.csv file ok"; fi && ' \
+        'bq --location=US load --replace --source_format=CSV --skip_leading_rows=1 token_recommender.tokens tokens.csv /home/airflow/gcs/dags/resources/tokens_schema.json '
+
+
+
+crawl_tokens_operator = BashOperator(
+    task_id='crawl_tokens',
+    bash_command=crawl_tokens_command,
+    depends_on_past=False,
+    dag=dag_train_model
+)
+
+
 # BigQuery training data query
 
 sql = '''
@@ -120,7 +149,7 @@ where true
     and token_count >= 2
 '''
 
-t1 = BigQueryOperator(
+query_training_data_operator = BigQueryOperator(
     task_id='query_training_data',
     sql=sql,
     use_legacy_sql=False,
@@ -131,7 +160,7 @@ t1 = BigQueryOperator(
 # BigQuery training data export to GCS
 
 training_file = BUCKET + '/data/token_balances.csv'
-t2 = BigQueryToCloudStorageOperator(
+export_training_data_operator = BigQueryToCloudStorageOperator(
     task_id='export_training_data',
     source_project_dataset_table='token_recommender.token_balances',
     destination_cloud_storage_uris=[training_file],
@@ -148,7 +177,7 @@ training_args = ['--job-dir', job_dir,
                  '--train-files', training_file,
                  '--output-dir', output_dir]
 
-t3 = MLEngineTrainingOperator(
+train_model_ml_engine_operator = MLEngineTrainingOperator(
     task_id='train_model_ml_engine',
     project_id=PROJECT_ID,
     job_id=job_id,
@@ -163,8 +192,7 @@ t3 = MLEngineTrainingOperator(
 )
 
 
-t2.set_upstream(t1)
-t3.set_upstream(t2)
+crawl_tokens_operator >> query_training_data_operator >> export_training_data_operator >> train_model_ml_engine_operator
 
 # Adding t4 as downstream to t3 breaks the dag for some freaking unknown reason, so have to separate DAGs
 dag_deploy_app_engine = DAG(
