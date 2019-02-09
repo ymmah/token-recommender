@@ -33,6 +33,7 @@ DEFAULT_RECS = 5
 def recommendation():
     """Given a user id, return a list of recommended item ids."""
     user_address = request.args.get('user_address')
+    user_address = user_address.lower() if user_address is not None else None
     num_recs = request.args.get('num_recs')
 
     # validate args
