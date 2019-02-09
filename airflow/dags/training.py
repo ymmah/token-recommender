@@ -80,7 +80,7 @@ setup_command = \
         ' && ' \
         'git clone --branch master http://github.com/blockchain-etl/ethereum-scraper && ' \
         'cd ethereum-scraper/ethscraper && ' \
-        'export CLOUDSDK_PYTHON=/usr/local/bin/python3'
+        'export CLOUDSDK_PYTHON=/usr/local/bin/python2'
 
 crawl_tokens_command = \
         setup_command + ' && ' + \
@@ -94,9 +94,29 @@ crawl_tokens_operator = BashOperator(
     task_id='crawl_tokens',
     bash_command=crawl_tokens_command,
     depends_on_past=False,
+    execution_timeout=datetime.timedelta(hours=2),
     dag=dag_train_model
 )
 
+query_tokens_operator = BigQueryOperator(
+    task_id='query_tokens',
+    sql='''
+#standardSQL
+select eth_address as address, symbol, name from token_recommender.tokens as tokens
+''',
+    use_legacy_sql=False,
+    destination_dataset_table='token_recommender.tokens_export',
+    write_disposition='WRITE_TRUNCATE',
+    dag=dag_train_model)
+
+tokens_file = BUCKET + '/data/tokens.csv'
+export_tokens_operator = BigQueryToCloudStorageOperator(
+    task_id='export_tokens',
+    source_project_dataset_table='token_recommender.tokens_export',
+    destination_cloud_storage_uris=[tokens_file],
+    export_format='CSV',
+    dag=dag_train_model
+)
 
 # BigQuery training data query
 
@@ -192,7 +212,10 @@ train_model_ml_engine_operator = MLEngineTrainingOperator(
 )
 
 
-crawl_tokens_operator >> query_training_data_operator >> export_training_data_operator >> train_model_ml_engine_operator
+crawl_tokens_operator >> query_tokens_operator >> export_tokens_operator >> query_training_data_operator
+query_training_data_operator >> export_training_data_operator
+export_training_data_operator >> train_model_ml_engine_operator
+
 
 # Adding t4 as downstream to t3 breaks the dag for some freaking unknown reason, so have to separate DAGs
 dag_deploy_app_engine = DAG(
@@ -202,7 +225,7 @@ dag_deploy_app_engine = DAG(
     schedule_interval='0 1 * * *')
 # App Engine deploy new version
 
-t4 = BashOperator(
+deploy_app_engine_version_operator = BashOperator(
     task_id='deploy_app_engine_version',
     bash_command='cd /home/airflow/gcs/dags/app && gcloud -q app deploy app_template.yaml_deploy.yaml',
     depends_on_past=False,
